@@ -1,0 +1,91 @@
+diff --git a/config.h.in b/config.h.in
+index e5059e1..43e5f9b 100644
+--- a/config.h.in
++++ b/config.h.in
+@@ -22,6 +22,7 @@
+ #cmakedefine APPLICATION_HELP_URL "@APPLICATION_HELP_URL@"
+ #cmakedefine APPLICATION_SIGNUP_URL "@APPLICATION_SIGNUP_URL@"
+ #cmakedefine APPLICATION_ICON_NAME "@APPLICATION_ICON_NAME@"
++#define APPLICATION_PROFILE_URL "@APPLICATION_PROFILE_URL@"
+ #cmakedefine APPLICATION_ICON_SET "@APPLICATION_ICON_SET@"
+ #cmakedefine APPLICATION_SERVER_URL R"(@APPLICATION_SERVER_URL@)"
+ #cmakedefine APPLICATION_SERVER_URL_ENFORCE "@APPLICATION_SERVER_URL_ENFORCE@"
+diff --git a/src/gui/owncloudgui.cpp b/src/gui/owncloudgui.cpp
+index 67aa1ea..e6789ad 100644
+--- a/src/gui/owncloudgui.cpp
++++ b/src/gui/owncloudgui.cpp
+@@ -25,6 +25,7 @@
+ #include "filedetails/sharemodel.h"
+ #include "filedetails/sortedsharemodel.h"
+ #include "folderman.h"
++#include "networkjobs.h"
+ #include "tray/usermodel.h"
+ #include "governance/applygovernancelabel.h"
+ #include "governance/deletegovernancelabel.h"
+@@ -57,6 +58,8 @@
+ 
+ #include <QClipboard>
+ #include <QDesktopServices>
++#include <QJsonArray>
++#include <QJsonObject>
+ #include <QDir>
+ #include <QFileDialog>
+ #include <QGuiApplication>
+@@ -247,6 +250,11 @@ void ownCloudGui::slotOpenMainDialog()
+ 
+ void ownCloudGui::slotTrayClicked(QSystemTrayIcon::ActivationReason reason)
+ {
++    // Smarta AI: no windows of its own, the profile on the site is the program's settings.
++    if (!AccountManager::instance()->accounts().isEmpty()) {
++        slotShowSettings();
++        return;
++    }
+     const auto currentUser = UserModel::instance()->currentUser();
+     if (reason == QSystemTrayIcon::DoubleClick && currentUser && currentUser->hasLocalFolder()) {
+         currentUser->openLocalFolder();
+@@ -287,6 +295,17 @@ void ownCloudGui::slotSyncStateChange(Folder *folder)
+ 
+     qCInfo(lcApplication) << "Sync state changed for folder " << folder->remoteUrl().toString() << ": " << result.statusString();
+ 
++    // Smarta AI: the profile on the site shows this computer's state (serve.py Cloud.status).
++    const auto statusJob = new JsonApiJob(folder->accountState()->account(), QStringLiteral("/ocs/v2.php/apps/smarta/status"), this);
++    statusJob->setVerb(SimpleApiJob::Verb::Post);
++    statusJob->setBody(QJsonDocument(QJsonObject{
++        {QStringLiteral("state"), static_cast<int>(result.status())},
++        {QStringLiteral("errors"), QJsonArray::fromStringList(result.errorStrings().mid(0, 5))},
++        {QStringLiteral("conflicts"), result.numNewConflictItems() + result.numOldConflictItems()},
++        {QStringLiteral("paused"), folder->syncPaused()},
++    }));
++    statusJob->start();
++
+     if (result.status() == SyncResult::Success
+         || result.status() == SyncResult::Problem
+         || result.status() == SyncResult::SyncAbortRequested
+@@ -676,6 +695,10 @@ void ownCloudGui::slotShowGuiMessage(const QString &title, const QString &messag
+ 
+ void ownCloudGui::slotShowSettings()
+ {
++    // Smarta AI: «Профиль → Сетевой диск» on the site instead of the settings dialog.
++    QDesktopServices::openUrl(QUrl(QStringLiteral(APPLICATION_PROFILE_URL)));
++    return;
++
+     if (_settingsDialog.isNull()) {
+         _settingsDialog = new SettingsDialog(this);
+         _settingsDialog->setAttribute(Qt::WA_DeleteOnClose, true);
+diff --git a/src/gui/systray.cpp b/src/gui/systray.cpp
+index 548f873..57cfcbf 100644
+--- a/src/gui/systray.cpp
++++ b/src/gui/systray.cpp
+@@ -1139,6 +1139,12 @@ void Systray::setIsOpen(const bool isOpen)
+ 
+ void Systray::showMessage(const QString &title, const QString &message, MessageIcon icon)
+ {
++    // Smarta AI: no pop-ups; the profile on the site shows what the program would say.
++    Q_UNUSED(title)
++    Q_UNUSED(message)
++    Q_UNUSED(icon)
++    return;
++
+ #ifdef USE_FDO_NOTIFICATIONS
+     if (QDBusInterface(NOTIFICATIONS_SERVICE, NOTIFICATIONS_PATH, NOTIFICATIONS_IFACE).isValid()) {
+         const QVariantMap hints = {{QStringLiteral("desktop-entry"), LINUX_APPLICATION_ID}};

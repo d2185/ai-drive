@@ -88,12 +88,13 @@ jobs:
           $env:PATH = "$env:GITHUB_WORKSPACE\$env:CRAFT_TARGET\bin;$env:PATH"
           function craft { python "$env:CRAFT_MASTER_LOCATION\CraftMaster.py" --config $env:CRAFT_MASTER_CONFIG --target $env:CRAFT_TARGET -c $args 2>&1 | Tee-Object craft.log -Append; if ($LASTEXITCODE) { exit $LASTEXITCODE } }
           craft --src-dir "$env:GITHUB_WORKSPACE\client" nextcloud-client
-          # Its packing (unused by upstream's CI) misses an import, and keeps only nextcloud*.exe of the programs.
+          # Its packing (unused by upstream's CI) misses an import, and keeps only nextcloud*.exe of the programs:
+          # ours is smarta-ai.exe alone.
           $blueprint = "$env:GITHUB_WORKSPACE\$env:CRAFT_TARGET\etc\blueprints\locations\craft-blueprints-nextcloud\nextcloud-client"
           if (-not (Select-String "$blueprint\nextcloud-client.py" -Pattern '^import os$' -Quiet)) {
             "import os`n" + (Get-Content "$blueprint\nextcloud-client.py" -Raw) | Set-Content "$blueprint\nextcloud-client.py" -NoNewline
           }
-          (Get-Content "$blueprint\blacklist.txt") -replace '^bin/\(\?!\(nextcloud\|', 'bin/(?!(smarta-ai|nextcloud|' | Set-Content "$blueprint\blacklist.txt"
+          (Get-Content "$blueprint\blacklist.txt") -replace '^bin/\(\?!\(nextcloud\|', 'bin/(?!(smarta-ai\.exe|nextcloud|' | Set-Content "$blueprint\blacklist.txt"
           if (-not (Select-String "$blueprint\blacklist.txt" -Pattern 'smarta-ai' -Quiet)) { throw 'blacklist.txt changed' }
           craft --src-dir "$env:GITHUB_WORKSPACE\client" --package nextcloud-client
           $pack = Get-ChildItem "$env:GITHUB_WORKSPACE\$env:CRAFT_TARGET\tmp" -Recurse -Filter *.7z |

@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Nextcloud's desktop program as «Smarta AI»: our name, icon and server, its own GUIDs (beside a real Nextcloud on
-the same computer nothing collides), no updater, one account with virtual files (Windows Cloud Files API).
+the same computer nothing collides), no updater, one account with virtual files (Windows Cloud Files API). No windows
+of its own (patches/): the tray icon and any «settings» open the profile on the site, which also shows the state the
+program reports after each sync.
 
     brand.py <the program's source>        (github.com/nextcloud/desktop at VERSION, see build.yml)
 
 Each change names the exact text it replaces: a new upstream version that moved it fails here, not in the build.
 """
-import pathlib, shutil, sys
+import pathlib, shutil, subprocess, sys
 
 NAME, SHORT, EXE, ICON = "Smarta AI", "SmartaAI", "smarta-ai", "SmartaAI"
 SERVER = "https://drive.ai.unert.com"
+PROFILE = "https://ai.unert.com/account/drive"
 
 CMAKE = [
     ('set( APPLICATION_NAME       "Nextcloud" )', f'set( APPLICATION_NAME       "{NAME}" )'),
@@ -18,7 +21,8 @@ CMAKE = [
     ('set( APPLICATION_ICON_NAME  "${APPLICATION_SHORTNAME}" )', f'set( APPLICATION_ICON_NAME  "{ICON}" )'),
     ('"nextcloud.com"', '"ai.unert.com"'),
     ('"Nextcloud GmbH"', '"Smarta"'),
-    ('set( APPLICATION_SERVER_URL "" CACHE', f'set( APPLICATION_SERVER_URL "{SERVER}" CACHE'),
+    ('set( APPLICATION_SERVER_URL "" CACHE', f'set( APPLICATION_PROFILE_URL "{PROFILE}" )\n'
+                                             f'set( APPLICATION_SERVER_URL "{SERVER}" CACHE'),
     ('"com.nextcloud.desktopclient"', '"com.unert.ai.drive"'),
     ('set( APPLICATION_VIRTUALFILE_SUFFIX "nextcloud"', 'set( APPLICATION_VIRTUALFILE_SUFFIX "smarta"'),
     ('option( BUILD_UPDATER "Build updater" ON )', 'option( BUILD_UPDATER "Build updater" OFF )'),
@@ -55,6 +59,8 @@ def main(src):
     src = pathlib.Path(src)
     patch(src / "NEXTCLOUD.cmake", CMAKE)
     patch(src / "CMakeLists.txt", CMAKELISTS)
+    for p in sorted((pathlib.Path(__file__).parent / "patches").glob("*.patch")):
+        subprocess.run(["git", "apply", str(p.resolve())], cwd=src, check=True)
     logo, colored = pathlib.Path(__file__).parent / "theme" / "logo.svg", src / "theme" / "colored"
     for name in (f"{ICON}-icon.svg", f"{ICON}-w10startmenu.svg", "wizard_logo.svg"):
         shutil.copyfile(logo, colored / name)
