@@ -58,6 +58,12 @@ def main(src):
     logo, colored = pathlib.Path(__file__).parent / "theme" / "logo.svg", src / "theme" / "colored"
     for name in (f"{ICON}-icon.svg", f"{ICON}-w10startmenu.svg", "wizard_logo.svg"):
         shutil.copyfile(logo, colored / name)
+    # The Start menu tile, named after the program (the build makes its pictures from the w10startmenu icon).
+    (src / "theme" / f"{EXE}.VisualElementsManifest.xml").write_text(
+        "<Application xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'>\n"
+        f'  <VisualElements ForegroundText="light" ShowNameOnSquare150x150Logo="on" BackgroundColor="#171717"\n'
+        f'    Square150x150Logo="visualelements\\150-{ICON}-w10startmenu.png"\n'
+        f'    Square70x70Logo="visualelements\\70-{ICON}-w10startmenu.png"/>\n</Application>\n')
 
 
 if __name__ == "__main__":
