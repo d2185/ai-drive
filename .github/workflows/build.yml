@@ -88,16 +88,20 @@ jobs:
           $env:PATH = "$env:GITHUB_WORKSPACE\$env:CRAFT_TARGET\bin;$env:PATH"
           function craft { python "$env:CRAFT_MASTER_LOCATION\CraftMaster.py" --config $env:CRAFT_MASTER_CONFIG --target $env:CRAFT_TARGET -c $args 2>&1 | Tee-Object craft.log -Append; if ($LASTEXITCODE) { exit $LASTEXITCODE } }
           craft --src-dir "$env:GITHUB_WORKSPACE\client" nextcloud-client
-          # Its packing (unused by upstream's CI) misses an import.
-          $blueprint = "$env:GITHUB_WORKSPACE\$env:CRAFT_TARGET\etc\blueprints\locations\craft-blueprints-nextcloud\nextcloud-client\nextcloud-client.py"
-          if (-not (Select-String $blueprint -Pattern '^import os$' -Quiet)) { "import os`n" + (Get-Content $blueprint -Raw) | Set-Content $blueprint -NoNewline }
+          # Its packing (unused by upstream's CI) misses an import, and keeps only nextcloud*.exe of the programs.
+          $blueprint = "$env:GITHUB_WORKSPACE\$env:CRAFT_TARGET\etc\blueprints\locations\craft-blueprints-nextcloud\nextcloud-client"
+          if (-not (Select-String "$blueprint\nextcloud-client.py" -Pattern '^import os$' -Quiet)) {
+            "import os`n" + (Get-Content "$blueprint\nextcloud-client.py" -Raw) | Set-Content "$blueprint\nextcloud-client.py" -NoNewline
+          }
+          (Get-Content "$blueprint\blacklist.txt") -replace '^bin/\(\?!\(nextcloud\|', 'bin/(?!(smarta-ai|nextcloud|' | Set-Content "$blueprint\blacklist.txt"
+          if (-not (Select-String "$blueprint\blacklist.txt" -Pattern 'smarta-ai' -Quiet)) { throw 'blacklist.txt changed' }
           craft --src-dir "$env:GITHUB_WORKSPACE\client" --package nextcloud-client
           $pack = Get-ChildItem "$env:GITHUB_WORKSPACE\$env:CRAFT_TARGET\tmp" -Recurse -Filter *.7z |
             Where-Object Name -notmatch '-dbg' | Sort-Object LastWriteTime | Select-Object -Last 1
-          if (-not $pack) {
+          if (-not $pack -or -not (& 7z l $pack.FullName | Select-String 'bin\\smarta-ai\.exe' -Quiet)) {
             Get-ChildItem "$env:GITHUB_WORKSPACE\$env:CRAFT_TARGET" -Recurse -Filter *.7z | Where-Object FullName -notmatch '\\cache\\' |
               ForEach-Object FullName
-            throw 'no .7z package in tmp'
+            throw 'no .7z package with bin\smarta-ai.exe in tmp'
           }
           New-Item -ItemType Directory -Force out | Out-Null
           Copy-Item $pack.FullName "out\smarta-ai-$env:VERSION-windows-x64.7z"
