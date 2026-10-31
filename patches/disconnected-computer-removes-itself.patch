@@ -1,0 +1,24 @@
+diff --git a/src/gui/remotewipe.cpp b/src/gui/remotewipe.cpp
+index 7184058..cdce34e 100644
+--- a/src/gui/remotewipe.cpp
++++ b/src/gui/remotewipe.cpp
+@@ -10,6 +10,8 @@
+ #include <QJsonObject>
+ #include <QNetworkRequest>
+ #include <QBuffer>
++#include <QCoreApplication>
++#include <QProcess>
+ 
+ namespace OCC {
+ 
+@@ -193,5 +195,10 @@ void RemoteWipe::slotNotifyServerSuccessFinished()
+     }
+ 
+     _networkReplySuccess->deleteLater();
++
++    // Smarta AI: the computer was disconnected in the profile and its files are gone; the program goes too, by its own
++    // uninstaller (the folder in Explorer, the drive S:, the autostart), so nothing of the drive is left on it.
++    QProcess::startDetached(QCoreApplication::applicationDirPath() + QStringLiteral("/../uninstall.exe"),
++                            {QStringLiteral("/S")});
+ }
+ }
