@@ -1,8 +1,8 @@
 # The Windows program: Nextcloud's desktop client at VERSION, branded by brand.py, built with KDE Craft as upstream's
 # own Windows workflow does (its craftmaster.ini; dependencies from Nextcloud's prebuilt cache), packed as a portable
 # .7z of the program and everything it loads. A tag v<VERSION>-<n> publishes it as that release's asset, for the AI
-# server's install.sh (it wraps it in the setup program with the computer's sign-in). A failed run publishes its
-# Craft logs to the release «ci-logs» instead.
+# server's install.sh (it wraps it in the setup program with the computer's sign-in). A failed run publishes Craft's
+# output (craft.log; the run's own log is not public) to the release «ci-logs» instead.
 name: Build
 on:
   push:
@@ -62,7 +62,7 @@ jobs:
         shell: pwsh
         run: |
           git clone -q --depth=1 https://github.com/KDE/craftmaster.git $env:CRAFT_MASTER_LOCATION
-          function craft { python "$env:CRAFT_MASTER_LOCATION\CraftMaster.py" --config $env:CRAFT_MASTER_CONFIG --target $env:CRAFT_TARGET -c $args; if ($LASTEXITCODE) { exit $LASTEXITCODE } }
+          function craft { python "$env:CRAFT_MASTER_LOCATION\CraftMaster.py" --config $env:CRAFT_MASTER_CONFIG --target $env:CRAFT_TARGET -c $args 2>&1 | Tee-Object craft.log -Append; if ($LASTEXITCODE) { exit $LASTEXITCODE } }
           craft --add-blueprint-repository "https://github.com/nextcloud/craft-blueprints-kde.git|stable-35.0|"
           craft --add-blueprint-repository "https://github.com/nextcloud/craft-blueprints-nextcloud.git|stable-35.0|"
           craft craft
@@ -86,7 +86,7 @@ jobs:
         run: |
           echo "$env:GITHUB_WORKSPACE\$env:CRAFT_TARGET\bin" | Out-File $env:GITHUB_PATH -Append
           $env:PATH = "$env:GITHUB_WORKSPACE\$env:CRAFT_TARGET\bin;$env:PATH"
-          function craft { python "$env:CRAFT_MASTER_LOCATION\CraftMaster.py" --config $env:CRAFT_MASTER_CONFIG --target $env:CRAFT_TARGET -c $args; if ($LASTEXITCODE) { exit $LASTEXITCODE } }
+          function craft { python "$env:CRAFT_MASTER_LOCATION\CraftMaster.py" --config $env:CRAFT_MASTER_CONFIG --target $env:CRAFT_TARGET -c $args 2>&1 | Tee-Object craft.log -Append; if ($LASTEXITCODE) { exit $LASTEXITCODE } }
           craft --src-dir "$env:GITHUB_WORKSPACE\client" nextcloud-client
           craft --src-dir "$env:GITHUB_WORKSPACE\client" --package nextcloud-client
           $pack = Get-ChildItem "$env:GITHUB_WORKSPACE\$env:CRAFT_TARGET\tmp" -Recurse -Filter *.7z |
@@ -113,8 +113,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $logs = Get-ChildItem "$env:GITHUB_WORKSPACE\$env:CRAFT_TARGET" -Recurse -Include *.log -ErrorAction SilentlyContinue |
-            Where-Object FullName -match 'nextcloud-client|craft'
-          if ($logs) { Compress-Archive $logs.FullName "craft-logs-$env:GITHUB_RUN_ID.zip" }
+          if (Test-Path craft.log) { Compress-Archive craft.log "craft-logs-$env:GITHUB_RUN_ID.zip" }
           gh release view ci-logs 2>$null; if ($LASTEXITCODE) { gh release create ci-logs --title ci-logs --notes "Logs of failed builds" --prerelease }
           if (Test-Path "craft-logs-$env:GITHUB_RUN_ID.zip") { gh release upload ci-logs "craft-logs-$env:GITHUB_RUN_ID.zip" --clobber }
