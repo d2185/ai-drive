@@ -1,0 +1,120 @@
+# The Windows program: Nextcloud's desktop client at VERSION, branded by brand.py, built with KDE Craft as upstream's
+# own Windows workflow does (its craftmaster.ini; dependencies from Nextcloud's prebuilt cache), packed as a portable
+# .7z of the program and everything it loads. A tag v<VERSION>-<n> publishes it as that release's asset, for the AI
+# server's install.sh (it wraps it in the setup program with the computer's sign-in). A failed run publishes its
+# Craft logs to the release «ci-logs» instead.
+name: Build
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  VERSION: "35.0.2"
+  CRAFT_TARGET: windows-msvc2022_64-cl
+  CRAFT_MASTER_LOCATION: ${{ github.workspace }}\CraftMaster
+  CRAFT_MASTER_CONFIG: ${{ github.workspace }}\craftmaster.ini
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: nextcloud/desktop
+          ref: v${{ env.VERSION }}
+          path: client
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Brand
+        shell: pwsh
+        run: |
+          python brand.py client
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          # Upstream's Craft setup, without tests, packed portable (.7z) instead of its installer.
+          (Get-Content client\craftmaster.ini) `
+            -replace '^nextcloud-client.buildTests = True', 'nextcloud-client.buildTests = False' `
+            -replace '^Packager/PackageType = NullsoftInstallerPackager', 'Packager/PackageType = PortablePackager' |
+            Set-Content $env:CRAFT_MASTER_CONFIG
+          if (-not (Select-String $env:CRAFT_MASTER_CONFIG -Pattern 'PortablePackager' -Quiet)) { throw 'craftmaster.ini changed' }
+
+      - name: Restore Craft
+        id: craft-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ env.CRAFT_MASTER_LOCATION }}
+            ${{ github.workspace }}\craft-clone
+            ${{ github.workspace }}\${{ env.CRAFT_TARGET }}
+          key: craft-${{ env.CRAFT_TARGET }}-${{ env.VERSION }}-${{ hashFiles('craftmaster.ini') }}
+
+      - name: Craft and the program's dependencies
+        if: steps.craft-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          git clone -q --depth=1 https://github.com/KDE/craftmaster.git $env:CRAFT_MASTER_LOCATION
+          function craft { python "$env:CRAFT_MASTER_LOCATION\CraftMaster.py" --config $env:CRAFT_MASTER_CONFIG --target $env:CRAFT_TARGET -c $args; if ($LASTEXITCODE) { exit $LASTEXITCODE } }
+          craft --add-blueprint-repository "https://github.com/nextcloud/craft-blueprints-kde.git|stable-35.0|"
+          craft --add-blueprint-repository "https://github.com/nextcloud/craft-blueprints-nextcloud.git|stable-35.0|"
+          craft craft
+          craft --install-deps nextcloud-client
+
+      - name: Save Craft
+        if: steps.craft-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ env.CRAFT_MASTER_LOCATION }}
+            ${{ github.workspace }}\craft-clone
+            ${{ github.workspace }}\${{ env.CRAFT_TARGET }}
+          key: craft-${{ env.CRAFT_TARGET }}-${{ env.VERSION }}-${{ hashFiles('craftmaster.ini') }}
+
+      - name: Inkscape (the icons from SVG)
+        run: choco install inkscape -y --no-progress
+
+      - name: Build and pack
+        shell: pwsh
+        run: |
+          echo "$env:GITHUB_WORKSPACE\$env:CRAFT_TARGET\bin" | Out-File $env:GITHUB_PATH -Append
+          $env:PATH = "$env:GITHUB_WORKSPACE\$env:CRAFT_TARGET\bin;$env:PATH"
+          function craft { python "$env:CRAFT_MASTER_LOCATION\CraftMaster.py" --config $env:CRAFT_MASTER_CONFIG --target $env:CRAFT_TARGET -c $args; if ($LASTEXITCODE) { exit $LASTEXITCODE } }
+          craft --src-dir "$env:GITHUB_WORKSPACE\client" nextcloud-client
+          craft --src-dir "$env:GITHUB_WORKSPACE\client" --package nextcloud-client
+          $pack = Get-ChildItem "$env:GITHUB_WORKSPACE\$env:CRAFT_TARGET\tmp" -Recurse -Filter *.7z |
+            Where-Object Name -notmatch '-dbg' | Sort-Object LastWriteTime | Select-Object -Last 1
+          if (-not $pack) {
+            Get-ChildItem "$env:GITHUB_WORKSPACE\$env:CRAFT_TARGET" -Recurse -Filter *.7z | Where-Object FullName -notmatch '\\cache\\' |
+              ForEach-Object FullName
+            throw 'no .7z package in tmp'
+          }
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item $pack.FullName "out\smarta-ai-$env:VERSION-windows-x64.7z"
+          Get-FileHash out\*.7z -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
+            Set-Content out\SHA256SUMS
+
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" out/* --title "${{ github.ref_name }}" --notes "Nextcloud desktop v${{ env.VERSION }}, branded «Smarta AI»"
+
+      - name: Logs of a failed run
+        if: failure()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $logs = Get-ChildItem "$env:GITHUB_WORKSPACE\$env:CRAFT_TARGET" -Recurse -Include *.log -ErrorAction SilentlyContinue |
+            Where-Object FullName -match 'nextcloud-client|craft'
+          if ($logs) { Compress-Archive $logs.FullName "craft-logs-$env:GITHUB_RUN_ID.zip" }
+          gh release view ci-logs 2>$null; if ($LASTEXITCODE) { gh release create ci-logs --title ci-logs --notes "Logs of failed builds" --prerelease }
+          if (Test-Path "craft-logs-$env:GITHUB_RUN_ID.zip") { gh release upload ci-logs "craft-logs-$env:GITHUB_RUN_ID.zip" --clobber }

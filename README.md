@@ -1,0 +1,16 @@
+# Smarta AI — программа сетевого диска для Windows
+
+Программа синхронизации Nextcloud Desktop под нашим именем: папка «Smarta AI» в Проводнике, файлы по требованию
+(Windows Cloud Files API), сервер — `drive.ai.unert.com` (чат Smarta AI, `serve.py` класс `Cloud` в
+[ai-server](https://github.com/d2185/ai-server)).
+
+- `brand.py` — имя, иконка, сервер, свои GUID, без самообновления, одна учётная запись с виртуальными файлами;
+- `theme/logo.svg` — иконка (логотип чата);
+- `.github/workflows/build.yml` — сборка на GitHub (KDE Craft, как у Nextcloud). Тег `v<версия>-<n>` выкладывает
+  `smarta-ai-<версия>-windows-x64.7z` и `SHA256SUMS` в релиз; установщик с подключением по коду из профиля собирает
+  `install.sh` сервера AI.
+
+Новая версия Nextcloud: поменять `VERSION` в `build.yml`, поставить тег. Если `brand.py` не нашёл свою строку,
+сборка остановится на нём — поправить замену.
+
+Исходники Nextcloud Desktop — GPL-2.0-or-later, этот репозиторий — те же условия.
