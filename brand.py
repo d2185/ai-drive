@@ -18,7 +18,6 @@ CMAKE = [
     ('set( APPLICATION_ICON_NAME  "${APPLICATION_SHORTNAME}" )', f'set( APPLICATION_ICON_NAME  "{ICON}" )'),
     ('"nextcloud.com"', '"ai.unert.com"'),
     ('"Nextcloud GmbH"', '"Smarta"'),
-    ('"https://updates.nextcloud.org/client/"', '""'),
     ('set( APPLICATION_SERVER_URL "" CACHE', f'set( APPLICATION_SERVER_URL "{SERVER}" CACHE'),
     ('"com.nextcloud.desktopclient"', '"com.unert.ai.drive"'),
     ('set( APPLICATION_VIRTUALFILE_SUFFIX "nextcloud"', 'set( APPLICATION_VIRTUALFILE_SUFFIX "smarta"'),
