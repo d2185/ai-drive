@@ -1,0 +1,74 @@
+diff --git a/src/gui/creds/webflowcredentials.cpp b/src/gui/creds/webflowcredentials.cpp
+index 42544f4..0a24a24 100644
+--- a/src/gui/creds/webflowcredentials.cpp
++++ b/src/gui/creds/webflowcredentials.cpp
+@@ -12,6 +12,7 @@
+ #include "configfile.h"
+ #include "theme.h"
+ #include "wizard/browserreauthwindow.h"
++#include "creds/flow2auth.h"
+ #include "networkjobs.h"
+ 
+ #include <QAuthenticator>
+@@ -142,6 +143,27 @@ void WebFlowCredentials::fetchFromKeychain(const QString &appName) {
+ }
+ 
+ void WebFlowCredentials::askFromUser() {
++    // Smarta AI: no window. The browser opens «Профиль → Сетевой диск» on the site, which asks «Подключить этот
++    // компьютер?» (login flow v2); once the user confirms, the new password arrives here and the program goes on.
++    if (_signIn) {
++        return;                                 // already waiting for the user's confirmation
++    }
++    _signIn = new Flow2Auth(_account, this);
++    connect(_signIn, &Flow2Auth::result, this,
++            [this](Flow2Auth::Result result, const QString &, const QString &user, const QString &appPassword) {
++        _signIn->deleteLater();
++        if (result == Flow2Auth::LoggedIn) {
++            _user = user;
++            _password = appPassword;
++            _ready = true;
++            _credentialsValid = true;
++            persist();
++        }
++        Q_EMIT asked();
++    });
++    _signIn->start();
++    return;
++
+     if (_reAuthWindow) {
+         _reAuthWindow->show();
+         return;
+diff --git a/src/gui/creds/webflowcredentials.h b/src/gui/creds/webflowcredentials.h
+index 850ecc8..9d65e6a 100644
+--- a/src/gui/creds/webflowcredentials.h
++++ b/src/gui/creds/webflowcredentials.h
+@@ -29,6 +29,7 @@ namespace KeychainChunk {
+ }
+ 
+ class BrowserReAuthWindow;
++class Flow2Auth;
+ 
+ class WebFlowCredentials : public AbstractCredentials
+ {
+@@ -126,6 +127,7 @@ protected:
+     QString _appName;
+ 
+     QPointer<BrowserReAuthWindow> _reAuthWindow;
++    QPointer<Flow2Auth> _signIn;              // Smarta AI: the sign-in through the browser, while it waits
+ };
+ 
+ } // namespace OCC
+diff --git a/src/gui/systray.cpp b/src/gui/systray.cpp
+index 548f873..9ef4e82 100644
+--- a/src/gui/systray.cpp
++++ b/src/gui/systray.cpp
+@@ -555,6 +555,9 @@ void Systray::showUserStatusWindow(int userIndex)
+ 
+ void Systray::setupContextMenu()
+ {
++    // Smarta AI: no menu on the tray icon; a click opens the profile on the site (ownCloudGui::slotTrayClicked).
++    return;
++
+     const auto oldContextMenu = _contextMenu.data();
+     // If we delete the old QMenu before setting the new one the client will crash on GNOME.
+     // Let's delete it once this method is over
