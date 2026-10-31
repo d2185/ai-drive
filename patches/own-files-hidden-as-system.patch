@@ -1,0 +1,23 @@
+diff --git a/src/common/filesystembase.cpp b/src/common/filesystembase.cpp
+index 416cf58..8c7da50 100644
+--- a/src/common/filesystembase.cpp
++++ b/src/common/filesystembase.cpp
+@@ -79,11 +79,14 @@ void FileSystem::setFileHidden(const QString &filename, bool hidden)
+ 
+     dwAttrs = GetFileAttributesW((wchar_t *)fName.utf16());
+ 
++    // Smarta AI: hidden as Windows hides its own files (hidden and system), so Explorer's «Скрытые элементы» do not
++    // show the sync journal and log in the folder either.
++    constexpr DWORD ownFile = FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM;
+     if (dwAttrs != INVALID_FILE_ATTRIBUTES) {
+-        if (hidden && !(dwAttrs & FILE_ATTRIBUTE_HIDDEN)) {
+-            SetFileAttributesW((wchar_t *)fName.utf16(), dwAttrs | FILE_ATTRIBUTE_HIDDEN);
+-        } else if (!hidden && (dwAttrs & FILE_ATTRIBUTE_HIDDEN)) {
+-            SetFileAttributesW((wchar_t *)fName.utf16(), dwAttrs & ~FILE_ATTRIBUTE_HIDDEN);
++        if (hidden && (dwAttrs & ownFile) != ownFile) {
++            SetFileAttributesW((wchar_t *)fName.utf16(), dwAttrs | ownFile);
++        } else if (!hidden && (dwAttrs & ownFile)) {
++            SetFileAttributesW((wchar_t *)fName.utf16(), dwAttrs & ~ownFile);
+         }
+     }
+ #else
