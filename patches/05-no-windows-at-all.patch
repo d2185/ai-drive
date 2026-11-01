@@ -1,0 +1,247 @@
+diff --git a/src/gui/application.cpp b/src/gui/application.cpp
+index 6438a20..d4f05d3 100644
+--- a/src/gui/application.cpp
++++ b/src/gui/application.cpp
+@@ -828,15 +828,7 @@ AccountManager::AccountsRestoreResult Application::restoreLegacyAccount()
+         Utility::sleep(5);
+         if (accountsRestoreResult = AccountManager::instance()->restore(tryMigrate);
+             accountsRestoreResult == AccountManager::AccountsRestoreFailure) {
+-            qCCritical(lcApplication) << "Could not read the account settings, quitting";
+-            QMessageBox::critical(
+-                nullptr,
+-                tr("Error accessing the configuration file"),
+-                tr("There was an error while accessing the configuration "
+-                   "file at %1. Please make sure the file can be accessed by your system account.")
+-                    .arg(ConfigFile().configFile()),
+-                QMessageBox::Ok
+-            );
++            qCCritical(lcApplication) << "Could not read the account settings, quitting";     // Smarta AI: no box
+             QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+         }
+     }
+@@ -858,12 +850,6 @@ void Application::slotAccountStateRemoved(AccountState *accountState)
+             _folderManager.data(), &FolderMan::slotServerVersionChanged);
+     }
+ 
+-    // if there is no more account, show the wizard.
+-    if (_gui && AccountManager::instance()->accounts().isEmpty()) {
+-        // allow to add a new account if there is non any more. Always think
+-        // about single account theming!
+-        OwncloudSetupWizard::runWizard(this, SLOT(slotownCloudWizardDone(int)));
+-    }
+ }
+ 
+ void Application::slotAccountStateAdded(AccountState *accountState)
+diff --git a/src/gui/creds/webflowcredentials.cpp b/src/gui/creds/webflowcredentials.cpp
+index 0a24a24..aa58ded 100644
+--- a/src/gui/creds/webflowcredentials.cpp
++++ b/src/gui/creds/webflowcredentials.cpp
+@@ -142,6 +142,11 @@ void WebFlowCredentials::fetchFromKeychain(const QString &appName) {
+     }
+ }
+ 
++QUrl WebFlowCredentials::signInLink() const
++{
++    return _signIn ? _signIn->authorisationLink() : QUrl();
++}
++
+ void WebFlowCredentials::askFromUser() {
+     // Smarta AI: no window. The browser opens «Профиль → Сетевой диск» on the site, which asks «Подключить этот
+     // компьютер?» (login flow v2); once the user confirms, the new password arrives here and the program goes on.
+diff --git a/src/gui/creds/webflowcredentials.h b/src/gui/creds/webflowcredentials.h
+index 9d65e6a..7b5ba15 100644
+--- a/src/gui/creds/webflowcredentials.h
++++ b/src/gui/creds/webflowcredentials.h
+@@ -46,6 +46,7 @@ public:
+             const QList<QSslCertificate> &caCertificates = QList<QSslCertificate>());
+ 
+     [[nodiscard]] QString authType() const override;
++    [[nodiscard]] QUrl signInLink() const;         // Smarta AI: the profile's «Подключить» while a sign-in waits
+     [[nodiscard]] QString user() const override;
+     [[nodiscard]] QString password() const override;
+     [[nodiscard]] QNetworkAccessManager *createQNAM() const override;
+diff --git a/src/gui/folder.cpp b/src/gui/folder.cpp
+index bbf44d4..ee5ca9a 100644
+--- a/src/gui/folder.cpp
++++ b/src/gui/folder.cpp
+@@ -1717,12 +1717,8 @@ void Folder::slotHydrationFailed(int errorCode, int statusCode, const QString &e
+         .arg(statusCode)
+         .arg(errorString);
+     _syncResult.appendErrorString(errorMessageDetails);
+-
+-    const auto errorMessageBox = new VfsDownloadErrorDialog(fileName, errorMessageDetails);
+-    errorMessageBox->setAttribute(Qt::WA_DeleteOnClose);
+-    errorMessageBox->show();
+-    errorMessageBox->activateWindow();
+-    errorMessageBox->raise();
++    // Smarta AI: no window; the program that opened the file hears it failed, the profile shows the error.
++    Q_UNUSED(fileName)
+ }
+ 
+ void Folder::slotCapabilitiesChanged()
+diff --git a/src/gui/folderman.cpp b/src/gui/folderman.cpp
+index fd6f66d..63c788f 100644
+--- a/src/gui/folderman.cpp
++++ b/src/gui/folderman.cpp
+@@ -515,15 +515,7 @@ bool FolderMan::ensureJournalGone(const QString &journalDbFile)
+     // remove the old journal file
+     while (QFile::exists(journalDbFile) && !QFile::remove(journalDbFile)) {
+         qCWarning(lcFolderMan) << "Could not remove old db file at" << journalDbFile;
+-        int ret = QMessageBox::warning(nullptr, tr("Could not reset folder state"),
+-            tr("An old sync journal \"%1\" was found, "
+-               "but could not be removed. Please make sure "
+-               "that no application is currently using it.")
+-                .arg(QDir::fromNativeSeparators(QDir::cleanPath(journalDbFile))),
+-            QMessageBox::Retry | QMessageBox::Abort);
+-        if (ret == QMessageBox::Abort) {
+-            return false;
+-        }
++        return false;                           // Smarta AI: no box to retry in; the setup says it failed
+     }
+     return true;
+ }
+@@ -1038,10 +1030,9 @@ void FolderMan::startScheduledSyncSoon()
+         msDelay = qMax(msDelay, pause);
+     }
+ 
+-    // Delays beyond one minute seem too big, particularly since there
+-    // could be things later in the queue that shouldn't be punished by a
+-    // long delay!
+-    msDelay = qMin(msDelay, 60 * 1000ll);
++    // Smarta AI: a change reaches the other side within 3 seconds (the user's rule), so the pause after a sync is a
++    // second at most; the server tells the computer of its changes at once (notify_push).
++    msDelay = qMin(msDelay, 1000ll);
+ 
+     // Time since the last sync run counts against the delay
+     msDelay = qMax(1ll, msDelay - msSinceLastSync);
+diff --git a/src/gui/owncloudgui.cpp b/src/gui/owncloudgui.cpp
+index e6789ad..2bf662a 100644
+--- a/src/gui/owncloudgui.cpp
++++ b/src/gui/owncloudgui.cpp
+@@ -25,6 +25,7 @@
+ #include "filedetails/sharemodel.h"
+ #include "filedetails/sortedsharemodel.h"
+ #include "folderman.h"
++#include "creds/webflowcredentials.h"
+ #include "networkjobs.h"
+ #include "tray/usermodel.h"
+ #include "governance/applygovernancelabel.h"
+@@ -250,11 +251,20 @@ void ownCloudGui::slotOpenMainDialog()
+ 
+ void ownCloudGui::slotTrayClicked(QSystemTrayIcon::ActivationReason reason)
+ {
+-    // Smarta AI: no windows of its own, the profile on the site is the program's settings.
+-    if (!AccountManager::instance()->accounts().isEmpty()) {
+-        slotShowSettings();
+-        return;
++    // Smarta AI: no windows of its own. A click on the icon (not the activation the tray sends at start) opens the
++    // profile on the site — or, while the computer waits to be confirmed there, its «Подключить» page again.
++    if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick || reason == QSystemTrayIcon::Context) {
++        const auto accounts = AccountManager::instance()->accounts();
++        const auto creds = accounts.isEmpty() ? nullptr : qobject_cast<WebFlowCredentials *>(accounts.first()->account()->credentials());
++        const auto link = creds ? creds->signInLink() : QUrl();
++        if (link.isValid()) {
++            QDesktopServices::openUrl(link);
++        } else {
++            slotShowSettings();
++        }
+     }
++    return;
++
+     const auto currentUser = UserModel::instance()->currentUser();
+     if (reason == QSystemTrayIcon::DoubleClick && currentUser && currentUser->hasLocalFolder()) {
+         currentUser->openLocalFolder();
+@@ -674,6 +684,9 @@ void ownCloudGui::slotLogout()
+ 
+ void ownCloudGui::slotNewAccountWizard()
+ {
++    // Smarta AI: no wizard; the computer is set up by its setup program with a code from the profile.
++    return;
++
+ #if defined ENFORCE_SINGLE_ACCOUNT
+     if (!AccountManager::instance()->accounts().isEmpty()) {
+         return;
+@@ -684,6 +697,10 @@ void ownCloudGui::slotNewAccountWizard()
+ 
+ void ownCloudGui::slotShowGuiMessage(const QString &title, const QString &message)
+ {
++    // Smarta AI: no message boxes; the log keeps it.
++    qCWarning(lcApplication) << title << message;
++    return;
++
+     auto *msgBox = new QMessageBox;
+     msgBox->setWindowFlags(msgBox->windowFlags() | Qt::WindowStaysOnTopHint);
+     msgBox->setAttribute(Qt::WA_DeleteOnClose);
+diff --git a/src/gui/proxyauthhandler.cpp b/src/gui/proxyauthhandler.cpp
+index 6b1fce1..606606b 100644
+--- a/src/gui/proxyauthhandler.cpp
++++ b/src/gui/proxyauthhandler.cpp
+@@ -132,6 +132,9 @@ void ProxyAuthHandler::slotSenderDestroyed(QObject *obj)
+ 
+ bool ProxyAuthHandler::getCredsFromDialog()
+ {
++    // Smarta AI: no dialog; a proxy's password can come only from the keychain.
++    return false;
++
+     // Open the credentials dialog
+     if (!_waitingForDialog) {
+         _dialog->reset();
+diff --git a/src/gui/socketapi/socketapi.cpp b/src/gui/socketapi/socketapi.cpp
+index aa0f221..56317b0 100644
+--- a/src/gui/socketapi/socketapi.cpp
++++ b/src/gui/socketapi/socketapi.cpp
+@@ -298,6 +298,8 @@ SocketApi::SocketApi(QObject *parent)
+         }
+     }
+ 
++    // Smarta AI: no socket for other programs (no shell extension uses it); its commands open windows.
++    return;
+     const bool result = _localServer.listen(socketPath);
+     qCDebug(lcSocketApi) << "Full server name:" << _localServer.fullServerName();
+ 
+diff --git a/src/gui/sslerrordialog.cpp b/src/gui/sslerrordialog.cpp
+index dc2cfe6..4aa144e 100644
+--- a/src/gui/sslerrordialog.cpp
++++ b/src/gui/sslerrordialog.cpp
+@@ -35,6 +35,8 @@ bool SslDialogErrorHandler::handleErrors(QList<QSslError> errors, const QSslConf
+     if (!account) {
+         return false;
+     }
++    // Smarta AI: a certificate the system does not trust is refused, never asked about.
++    return false;
+ 
+     // Check if HSTS is active for this host
+     auto qnam = account->networkAccessManager();
+diff --git a/src/gui/systray.cpp b/src/gui/systray.cpp
+index fb45d3c..a3483a9 100644
+--- a/src/gui/systray.cpp
++++ b/src/gui/systray.cpp
+@@ -184,12 +184,16 @@ void Systray::create()
+ void Systray::showWindow(WindowPosition position)
+ {
+     Q_UNUSED(position)
++    return;                                     // Smarta AI: no main window (nor the browser opened unasked)
+ 
+     Q_EMIT openSettings();
+ }
+ 
+ void Systray::showTrayPopup(WindowPosition position)
+ {
++    Q_UNUSED(position)
++    return;                                     // Smarta AI: no tray popup
++
+     if (isOpen()) {
+         return;
+     }
+@@ -611,6 +615,11 @@ void Systray::destroyDialog(QQuickWindow *dialog) const
+ 
+ void Systray::createCallDialog(const Activity &callNotification, const AccountStatePtr accountState)
+ {
++    // Smarta AI: no call windows.
++    Q_UNUSED(callNotification)
++    Q_UNUSED(accountState)
++    return;
++
+     qCDebug(lcSystray) << "Starting a new call dialog for notification with id: " << callNotification._id << "with text: " << callNotification._subject;
+ 
+     if (_trayEngine && !_callsAlreadyNotified.contains(callNotification._id)) {

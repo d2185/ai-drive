@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Nextcloud's desktop program as «Smarta AI»: our name, icon and server, its own GUIDs (beside a real Nextcloud on
-the same computer nothing collides), no updater, one account with virtual files (Windows Cloud Files API). No windows
-of its own (patches/): the tray icon and any «settings» open the profile on the site, which also shows the state the
-program reports after each sync.
+the same computer nothing collides), no updater, no import of another client's accounts, one account with virtual
+files (Windows Cloud Files API). No windows of its own (patches/): the tray icon opens the profile on the site, which
+shows the state the program reports. The tray icon is our logo: our blue while the drive works, red while it does not.
 
     brand.py <the program's source>        (github.com/nextcloud/desktop at VERSION, see build.yml)
 
@@ -12,6 +12,10 @@ import pathlib, shutil, subprocess, sys
 
 NAME, SHORT, EXE, ICON = "Smarta AI", "SmartaAI", "smarta-ai", "SmartaAI"
 SERVER = "https://drive.ai.unert.com"
+BLUE, RED = "#00A0E3", "#E7000B"           # our blue (the brand's); red as the chat's errors (--destructive)
+# The tray's state icons (Theme::syncStateIcon), in every flavor: working — synced, syncing, a warning; not — offline,
+# an error, paused.
+WORKING, NOT_WORKING = ("ok", "sync", "warning", "info"), ("offline", "error", "pause")
 PROFILE = "https://ai.unert.com/account/drive"
 
 CMAKE = [
@@ -39,6 +43,8 @@ CMAKE = [
     ("FD2FCCA9-BB8F-4485-8F70-A0621B84A7F4", "F393DA1E-4598-433B-ACCC-31A04FCFA199"),
 ]
 CMAKELISTS = [
+    # Not the stock Nextcloud's accounts on the same computer: their import is a window, and they are not ours.
+    ('"Exclude legacy account migration and import" OFF )', '"Exclude legacy account migration and import" ON )'),
     ("{E314A650-DCA4-416E-974E-18EA37C213EA}", "{03CD6587-9968-428F-9C0F-8C40037951C9}"),
     ('"1E62D59A-6EA4-476C-B707-4A32E88ED822"', '"763AB5DD-0EB0-44B5-8785-8EFD1CBBA442"'),
     ('"6FF9B5B6-389F-444A-9FDD-A286C36EA079"', '"ACCFE93D-5C64-4E0B-88A9-A8FEEA2B57FE"'),
@@ -64,6 +70,11 @@ def main(src):
     logo, colored = pathlib.Path(__file__).parent / "theme" / "logo.svg", src / "theme" / "colored"
     for name in (f"{ICON}-icon.svg", f"{ICON}-w10startmenu.svg", "wizard_logo.svg"):
         shutil.copyfile(logo, colored / name)
+    svg = logo.read_text()
+    for flavor in ("colored", "white", "black"):
+        for state in WORKING + NOT_WORKING:
+            fill = BLUE if state in WORKING else RED
+            (src / "theme" / flavor / f"state-{state}.svg").write_text(svg.replace('fill="#171717"', f'fill="{fill}"'))
     # The Start menu tile, named after the program (the build makes its pictures from the w10startmenu icon).
     (src / "theme" / f"{EXE}.VisualElementsManifest.xml").write_text(
         "<Application xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'>\n"
